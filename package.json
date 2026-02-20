@@ -1,0 +1,56 @@
+{
+  "name": "@artemsemkin/vite-plugin-wp-hmr",
+  "version": "1.0.0",
+  "description": "Vite plugin that generates a WordPress mu-plugin for HMR dev client injection",
+  "license": "MIT",
+  "author": "Artem Semkin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/artkrsk/vite-plugin-wp-hmr.git"
+  },
+  "homepage": "https://github.com/artkrsk/vite-plugin-wp-hmr#readme",
+  "bugs": {
+    "url": "https://github.com/artkrsk/vite-plugin-wp-hmr/issues"
+  },
+  "keywords": [
+    "vite",
+    "vite-plugin",
+    "wordpress",
+    "hmr",
+    "hot-module-replacement"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build"
+  },
+  "peerDependencies": {
+    "vite": ">=5"
+  },
+  "dependencies": {
+    "fs-extra": "^11.3.0"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^22.15.0",
+    "typescript": "^5.7.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
