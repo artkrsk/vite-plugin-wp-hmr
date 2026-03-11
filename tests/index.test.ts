@@ -70,6 +70,24 @@ describe('buildPhp', () => {
     expect(php).toContain('set_transient( $key, (int) $result, 10 )')
   })
 
+  it('uses probeOrigin for fsockopen while keeping origin for browser scripts', () => {
+    const php = buildPhp('http://localhost:5173', opts({ probeOrigin: 'http://host.docker.internal:5173' }))
+
+    expect(php).toContain("@fsockopen( 'host.docker.internal', 5173")
+    expect(php).toContain('http://localhost:5173/@vite/client')
+    expect(php).not.toContain("@fsockopen( 'localhost', 5173")
+  })
+
+  it('probeOrigin does not affect entry script URLs', () => {
+    const php = buildPhp('http://localhost:5173', opts({
+      probeOrigin: 'http://host.docker.internal:5173',
+      entries: { 'my-app': '/src/app.ts' },
+    }))
+
+    expect(php).toContain("'my-app' => 'http://localhost:5173/src/app.ts'")
+    expect(php).not.toContain("host.docker.internal/src/app.ts")
+  })
+
   it('wraps all functions in function_exists guards', () => {
     const php = buildPhp('http://localhost:5173', opts())
     const functions = ['vite_hmr_is_dev', 'vite_hmr_is_running', 'vite_hmr_inject', 'vite_hmr_csp']

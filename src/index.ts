@@ -23,14 +23,23 @@ export interface WpHmrOptions {
   /** Full Vite dev server origin override (e.g. 'https://localhost:5173').
    *  Bypasses auto-detection from Vite config. */
   origin?: string
+  /** Separate origin for PHP fsockopen probe (e.g. 'http://host.docker.internal:5173').
+   *  Use when PHP runs in Docker and cannot reach Vite via the browser origin.
+   *  Falls back to `origin` when omitted. */
+  probeOrigin?: string
+  /** Map of WP script handles to Vite source paths.
+   *  Generates script_loader_tag filters to rewrite src to Vite dev server URLs
+   *  and add type="module" in dev mode. */
+  entries?: Record<string, string>
 }
 
 const DEFAULT_TLDS = ['local', 'test', 'dev']
 
 export function buildPhp(origin: string, options: WpHmrOptions): string {
   const url = new URL(origin)
-  const host = url.hostname
-  const port = url.port || (url.protocol === 'https:' ? '443' : '80')
+  const probeUrl = options.probeOrigin ? new URL(options.probeOrigin) : url
+  const probeHost = probeUrl.hostname
+  const probePort = probeUrl.port || (probeUrl.protocol === 'https:' ? '443' : '80')
   const cacheTtl = options.cacheTtl ?? 5
 
   const extraTlds = options.devPatterns ?? []
@@ -63,10 +72,10 @@ export function buildPhp(origin: string, options: WpHmrOptions): string {
   // Port probe
   lines.push(`if ( ! function_exists( 'vite_hmr_is_running' ) ) {`)
   lines.push(`\tfunction vite_hmr_is_running(): bool {`)
-  lines.push(`\t\t$key    = 'vite_hmr_${port}';`)
+  lines.push(`\t\t$key    = 'vite_hmr_${probePort}';`)
   lines.push(`\t\t$cached = get_transient( $key );`)
   lines.push(`\t\tif ( $cached !== false ) { return (bool) $cached; }`)
-  lines.push(`\t\t$conn   = @fsockopen( '${host}', ${port}, $errno, $errstr, 1 );`)
+  lines.push(`\t\t$conn   = @fsockopen( '${probeHost}', ${probePort}, $errno, $errstr, 1 );`)
   lines.push(`\t\t$result = is_resource( $conn );`)
   lines.push(`\t\tif ( $result ) { fclose( $conn ); }`)
   lines.push(`\t\tset_transient( $key, (int) $result, ${cacheTtl} );`)
@@ -99,6 +108,29 @@ export function buildPhp(origin: string, options: WpHmrOptions): string {
   lines.push(`}`)
   lines.push(`add_action( 'wp_head', 'vite_hmr_inject', 1 );`)
   lines.push(``)
+
+  // Entry script rewriting (ESM dev mode)
+  if (options.entries && Object.keys(options.entries).length > 0) {
+    lines.push(`if ( ! function_exists( 'vite_hmr_rewrite_entry' ) ) {`)
+    lines.push(`\tfunction vite_hmr_rewrite_entry( string $tag, string $handle, string $src ): string {`)
+    lines.push(`\t\tif ( ! vite_hmr_is_dev() || ! vite_hmr_is_running() ) { return $tag; }`)
+    lines.push(`\t\t$entries = [`)
+    for (const [handle, srcPath] of Object.entries(options.entries)) {
+      lines.push(`\t\t\t'${handle}' => '${origin}${srcPath}',`)
+    }
+    lines.push(`\t\t];`)
+    lines.push(`\t\tif ( ! isset( $entries[ $handle ] ) ) { return $tag; }`)
+    lines.push(`\t\t$p = new WP_HTML_Tag_Processor( $tag );`)
+    lines.push(`\t\tif ( $p->next_tag( 'script' ) ) {`)
+    lines.push(`\t\t\t$p->set_attribute( 'src', $entries[ $handle ] );`)
+    lines.push(`\t\t\t$p->set_attribute( 'type', 'module' );`)
+    lines.push(`\t\t}`)
+    lines.push(`\t\treturn $p->get_updated_html();`)
+    lines.push(`\t}`)
+    lines.push(`}`)
+    lines.push(`add_filter( 'script_loader_tag', 'vite_hmr_rewrite_entry', 10, 3 );`)
+    lines.push(``)
+  }
 
   // CSP
   if (options.csp !== false) {
